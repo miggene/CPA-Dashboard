@@ -137,7 +137,10 @@ def fetch_auth_files_from_disk():
         print(f"认证目录不存在: {AUTH_DIR}")
         return files
     
-    for file_path in auth_path.glob("*.json"):
+    # 使用 iterdir + 后缀判断，避免 Linux 上 glob("*.json") 因大小写不匹配 .JSON 等变体而漏文件
+    for file_path in auth_path.iterdir():
+        if not file_path.is_file() or file_path.suffix.lower() != ".json":
+            continue
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -463,13 +466,25 @@ def api_refresh_all_quotas():
 @app.route("/api/config")
 def api_config():
     """获取配置信息"""
-    return jsonify({
+    data = {
         "management_api_url": MANAGEMENT_API_URL,
         "has_api_key": bool(MANAGEMENT_API_KEY),
         "auth_dir": AUTH_DIR,
         "mode": "api" if MANAGEMENT_API_KEY else "local",
         "quota_refresh_concurrency": QUOTA_REFRESH_CONCURRENCY,
-    })
+    }
+    # 本地模式时附加磁盘文件统计，便于排查「只显示部分账户」问题
+    if not MANAGEMENT_API_KEY:
+        auth_path = Path(AUTH_DIR)
+        if auth_path.exists():
+            json_files = [f.name for f in auth_path.iterdir() if f.is_file() and f.suffix.lower() == ".json"]
+            data["auth_dir_exists"] = True
+            data["auth_file_count"] = len(json_files)
+            data["auth_file_sample"] = sorted(json_files)[:10]  # 前 10 个文件名
+        else:
+            data["auth_dir_exists"] = False
+            data["auth_file_count"] = 0
+    return jsonify(data)
 
 
 # ==================== 账户管理 API ====================

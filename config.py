@@ -62,14 +62,8 @@ WEBUI_PORT = int(os.environ.get("WEBUI_PORT", "5000"))
 WEBUI_DEBUG = os.environ.get("WEBUI_DEBUG", "false").lower() == "true"
 
 # 认证目录 - 优先环境变量 CPA_AUTH_DIR，否则从 config.yaml 读取
-# 相对路径（如 auths、./auths）相对于 config 所在目录解析，与 CLIProxyAPI 行为一致
 _auth_dir = os.environ.get("CPA_AUTH_DIR") or _project_config.get("auth-dir", "~/.cli-proxy-api")
-_auth_dir_expanded = os.path.expanduser(_auth_dir)
-_config_path_for_auth = find_config_yaml()
-if _config_path_for_auth and _auth_dir_expanded and not os.path.isabs(_auth_dir_expanded):
-    AUTH_DIR = str((_config_path_for_auth.parent / _auth_dir_expanded).resolve())
-else:
-    AUTH_DIR = _auth_dir_expanded
+AUTH_DIR = os.path.expanduser(_auth_dir)
 
 # CLIProxyAPI 服务目录和日志配置
 # 从环境变量 CPA_CONFIG_PATH 推导服务目录，或使用 CPA_SERVICE_DIR 环境变量

@@ -199,9 +199,4 @@ ssh -L 51121:localhost:51121 user@server
 ## 注意
 
 - **配额**：仅 Antigravity 支持实时配额（模型别名与 CLIProxyAPI 一致）；其余类型（Gemini/Codex/Claude/Qwen/iFlow/Kimi/AI Studio/Vertex）显示静态模型列表，与 CLIProxyAPI `internal/registry/model_definitions_static_data.go` 同步
-
-### Linux 常见问题
-
-- **只显示部分账户**：检查认证目录是否正确。若 config 中 `auth-dir` 为相对路径（如 `auths`），会相对于 config 所在目录解析。可设置 `CPA_AUTH_DIR` 显式指定，例如：`export CPA_AUTH_DIR="$HOME/.cli-proxy-api"`
-- **配额刷新无显示**：若 `start-linux.sh` 中设置了代理，配额 API 请求会绕过代理（使用直连）。若仍失败，可检查网络或临时取消代理后重试
 - **服务控制**：需正确配置 `CPA_SERVICE_DIR`（或通过 `start-linux.sh` / 环境变量指定）
