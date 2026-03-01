@@ -1174,63 +1174,87 @@ def api_cancel_oauth():
 # ==================== 服务控制 API ====================
 
 def get_service_status():
-    """获取 CLIProxyAPI 服务状态"""
-    if not psutil:
-        return {
-            "running": False,
-            "error": "缺少 psutil 依赖，请先安装 requirements.txt",
-            "pids": [],
-            "processes": [],
-            "count": 0,
-        }
-
+    """获取 CLIProxyAPI 服务状态。Mac/Linux 用 pgrep（稳定），Windows 用 psutil。"""
     try:
-        binary_name_lower = CPA_BINARY_NAME.lower()
-        matched = []
+        if not IS_WINDOWS:
+            # Mac/Linux: 使用 pgrep 匹配命令行，与启动方式一致，稳定可靠
+            result = subprocess.run(
+                ["pgrep", "-f", CPA_BINARY_NAME],
+                capture_output=True,
+                text=True,
+            )
+            pids = [p.strip() for p in result.stdout.strip().split("\n") if p.strip()]
 
+            if pids:
+                processes = []
+                for pid in pids:
+                    try:
+                        ps_result = subprocess.run(
+                            ["ps", "-p", pid, "-o", "pid,ppid,%cpu,%mem,etime,command"],
+                            capture_output=True,
+                            text=True,
+                        )
+                        lines = ps_result.stdout.strip().split("\n")
+                        if len(lines) > 1:
+                            processes.append({"pid": pid, "info": lines[1].strip()})
+                        else:
+                            processes.append({"pid": pid, "info": ""})
+                    except Exception:
+                        processes.append({"pid": pid, "info": ""})
+                return {
+                    "running": True,
+                    "pids": pids,
+                    "processes": processes,
+                    "count": len(pids),
+                }
+            return {"running": False, "pids": [], "processes": [], "count": 0}
+
+        # Windows: 使用 psutil（无 pgrep）
+        if not psutil:
+            return {
+                "running": False,
+                "error": "缺少 psutil 依赖，请先安装 requirements.txt",
+                "pids": [],
+                "processes": [],
+                "count": 0,
+            }
+        binary_name_lower = CPA_BINARY_NAME.lower()
+        expected_binary_path = resolve_binary_path(CPA_SERVICE_DIR, CPA_BINARY_NAME) if CPA_SERVICE_DIR else ""
+        matched = []
         for proc in psutil.process_iter(attrs=["pid", "name", "cmdline", "exe", "ppid", "cpu_percent", "memory_info", "create_time"]):
             info = proc.info
             pid = info.get("pid")
             if not pid or pid == os.getpid():
                 continue
-
             name = (info.get("name") or "").lower()
-            exe = os.path.basename(info.get("exe") or "").lower()
+            exe_path = info.get("exe") or ""
+            exe = os.path.basename(exe_path).lower()
             cmdline = " ".join(info.get("cmdline") or []).lower()
-
-            if binary_name_lower not in name and binary_name_lower not in exe and binary_name_lower not in cmdline:
+            name_match = binary_name_lower in name or binary_name_lower in exe or binary_name_lower in cmdline
+            path_match = False
+            if expected_binary_path and exe_path and os.path.exists(expected_binary_path):
+                try:
+                    path_match = os.path.samefile(exe_path, expected_binary_path)
+                except OSError:
+                    path_match = os.path.normpath(exe_path) == os.path.normpath(expected_binary_path)
+            if not name_match and not path_match:
                 continue
-
             mem_mb = 0.0
             memory_info = info.get("memory_info")
             if memory_info and hasattr(memory_info, "rss"):
                 mem_mb = memory_info.rss / (1024 * 1024)
-
             uptime = ""
             create_time = info.get("create_time")
             if create_time:
                 elapsed = max(0, int(time.time() - create_time))
-                hours = elapsed // 3600
-                minutes = (elapsed % 3600) // 60
-                seconds = elapsed % 60
-                uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-            cpu_percent = info.get("cpu_percent", 0.0)
-            if cpu_percent is None:
-                cpu_percent = 0.0
-
+                uptime = f"{elapsed // 3600:02d}:{(elapsed % 3600) // 60:02d}:{elapsed % 60:02d}"
+            cpu_percent = info.get("cpu_percent", 0.0) or 0.0
             matched.append({
                 "pid": str(pid),
                 "info": f"pid={pid} ppid={info.get('ppid', '')} cpu={float(cpu_percent):.1f}% mem={mem_mb:.1f}MB uptime={uptime} cmd={cmdline[:240]}",
             })
-
         pids = [item["pid"] for item in matched]
-        return {
-            "running": len(matched) > 0,
-            "pids": pids,
-            "processes": matched,
-            "count": len(matched),
-        }
+        return {"running": len(matched) > 0, "pids": pids, "processes": matched, "count": len(matched)}
     except Exception as e:
         return {"running": False, "error": str(e), "pids": [], "processes": [], "count": 0}
 
@@ -1277,7 +1301,7 @@ def api_service_start():
             creation_flags |= subprocess.CREATE_NO_WINDOW
 
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 [binary_path],
                 cwd=CPA_SERVICE_DIR,
                 stdin=subprocess.DEVNULL,
@@ -1287,23 +1311,29 @@ def api_service_start():
             )
         finally:
             log_handle.close()
-        
+
         # 等待一小段时间让进程启动
         time.sleep(1)
-        
-        # 检查启动结果
+
+        # 优先用 Popen.poll() 判断进程是否仍在运行（不依赖 psutil 进程名匹配）
+        if proc.poll() is None:
+            return jsonify({
+                "success": True,
+                "message": "服务启动成功",
+                "pids": [str(proc.pid)],
+            })
+        # 若进程已退出，再尝试用 psutil 获取状态（可能已有其他实例）
         new_status = get_service_status()
         if new_status["running"]:
             return jsonify({
                 "success": True,
                 "message": "服务启动成功",
-                "pids": new_status["pids"]
+                "pids": new_status["pids"],
             })
-        else:
-            return jsonify({
-                "success": False,
-                "message": "服务启动失败，请检查日志"
-            }), 500
+        return jsonify({
+            "success": False,
+            "message": "服务启动失败，请检查日志",
+        }), 500
             
     except Exception as e:
         return jsonify({"error": f"启动服务失败: {str(e)}"}), 500
@@ -1318,34 +1348,47 @@ def api_service_stop():
             "success": True,
             "message": "服务未在运行"
         })
-    
-    if not psutil:
-        return jsonify({"error": "缺少 psutil 依赖，请先安装 requirements.txt"}), 500
 
     try:
+        if not IS_WINDOWS:
+            # Mac/Linux: 使用 pkill，与 pgrep 一致
+            subprocess.run(["pkill", "-f", CPA_BINARY_NAME], capture_output=True, text=True)
+            time.sleep(0.5)
+            new_status = get_service_status()
+            if not new_status["running"]:
+                return jsonify({"success": True, "message": "服务已停止", "killed_pids": status["pids"]})
+            subprocess.run(["pkill", "-9", "-f", CPA_BINARY_NAME], capture_output=True, text=True)
+            time.sleep(0.3)
+            final_status = get_service_status()
+            return jsonify({
+                "success": not final_status["running"],
+                "message": "服务已强制停止" if not final_status["running"] else "停止服务失败",
+                "killed_pids": status["pids"],
+                "remaining_pids": final_status["pids"],
+            })
+
+        # Windows: 使用 psutil
+        if not psutil:
+            return jsonify({"error": "缺少 psutil 依赖，请先安装 requirements.txt"}), 500
         processes = []
         for pid_text in status.get("pids", []):
             try:
                 processes.append(psutil.Process(int(pid_text)))
             except Exception:
                 continue
-
         for process in processes:
             try:
                 process.terminate()
             except Exception:
                 pass
-
         _, alive = psutil.wait_procs(processes, timeout=2.5)
         for process in alive:
             try:
                 process.kill()
             except Exception:
                 pass
-
         if alive:
             psutil.wait_procs(alive, timeout=1.5)
-
         time.sleep(0.3)
         final_status = get_service_status()
         return jsonify({
