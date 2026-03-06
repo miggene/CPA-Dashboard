@@ -26,5 +26,6 @@ if ! python3 -c "import flask" 2>/dev/null; then
     pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
 fi
 
+export CPA_QUOTA_REFRESH_CONCURRENCY=8
 # 启动应用
 python3 app.py

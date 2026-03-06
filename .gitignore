@@ -47,3 +47,6 @@ quota_cache.json
 
 # 示例文件夹
 example/
+
+# 本地构建脚本（含私有路径）
+update_and_build.sh

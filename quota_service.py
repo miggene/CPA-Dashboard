@@ -118,6 +118,7 @@ STATIC_MODEL_LISTS = {
         {"name": "gpt-5.2-codex", "display_name": "GPT 5.2 Codex", "description": "Stable version of GPT 5.2 Codex"},
         {"name": "gpt-5.3-codex", "display_name": "GPT 5.3 Codex", "description": "Stable version of GPT 5.3 Codex, The best model for coding and agentic tasks across domains."},
         {"name": "gpt-5.3-codex-spark", "display_name": "GPT 5.3 Codex Spark", "description": "Ultra-fast coding model."},
+        {"name": "gpt-5.4", "display_name": "GPT 5.4", "description": "Stable version of GPT 5.4"},
     ],
     # GetClaudeModels() - 与 model_definitions_static_data.go 对齐
     "claude": [
