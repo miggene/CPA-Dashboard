@@ -1190,8 +1190,31 @@ def api_cancel_oauth():
 # ==================== 服务控制 API ====================
 
 def get_service_status():
-    """获取 CLIProxyAPI 服务状态。Mac/Linux 用 pgrep（稳定），Windows 用 psutil。"""
+    """获取 CLIProxyAPI 服务状态。Mac/Linux 用 pgrep（稳定），Windows 用 psutil。在 Docker 中通过请求 Management API 判断。"""
     try:
+        # Docker 环境探测
+        is_docker = os.environ.get("DEPLOY", "").lower() == "docker"
+        if is_docker:
+            # Docker 模式下，直接请求 MANAGEMENT_API_URL 看是否通（类似 healthcheck）
+            try:
+                resp = requests.get(MANAGEMENT_API_URL, timeout=2, proxies=NO_PROXY)
+                return {
+                    "running": True,
+                    "pids": ["Docker"],
+                    "processes": [{"pid": "Docker", "info": f"Running inside Docker containers, Management URL: {MANAGEMENT_API_URL}"}],
+                    "count": 1,
+                    "is_docker": True
+                }
+            except Exception as e:
+                return {
+                    "running": False,
+                    "error": f"无法连接 Management API ({MANAGEMENT_API_URL}): {str(e)}",
+                    "pids": [],
+                    "processes": [],
+                    "count": 0,
+                    "is_docker": True
+                }
+
         if not IS_WINDOWS:
             # Mac/Linux: 使用 pgrep 匹配命令行，与启动方式一致，稳定可靠
             result = subprocess.run(
@@ -1279,6 +1302,8 @@ def get_service_status():
 def api_service_status():
     """获取服务状态"""
     status = get_service_status()
+    if "is_docker" not in status:
+        status["is_docker"] = os.environ.get("DEPLOY", "").lower() == "docker"
     status["service_dir"] = CPA_SERVICE_DIR
     status["binary_name"] = CPA_BINARY_NAME
     status["log_file"] = CPA_LOG_FILE

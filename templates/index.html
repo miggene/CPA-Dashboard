@@ -1928,23 +1928,72 @@
             const subtext = document.getElementById('statusSubtext');
             const btnStart = document.getElementById('btnStart');
             const btnStop = document.getElementById('btnStop');
+            const btnRestart = document.getElementById('btnRestart');
 
-            if (data.running) {
-                indicator.className = 'status-indicator running';
-                icon.textContent = '✅';
-                text.className = 'running';
-                text.textContent = '服务运行中';
-                subtext.textContent = `${data.count} 个进程正在运行`;
-                btnStart.disabled = true;
-                btnStop.disabled = false;
+            if (data.is_docker) {
+                if (data.running) {
+                    indicator.className = 'status-indicator running';
+                    icon.textContent = '✅';
+                    text.className = 'running';
+                    text.textContent = '中心服务运行中';
+                    subtext.textContent = 'Dashboard 正在通过内网通信';
+                } else {
+                    indicator.className = 'status-indicator stopped';
+                    icon.textContent = '⏹️';
+                    text.className = 'stopped';
+                    text.textContent = '无法连通核心服务';
+                    subtext.textContent = '请检查 Docker 容器 (cli-proxy-api)';
+                }
+
+                if (btnStart) btnStart.disabled = true;
+                if (btnStop) btnStop.disabled = true;
+                if (btnRestart) btnRestart.disabled = true;
+
+                let hint = document.getElementById('dockerServiceHint');
+                if (!hint) {
+                    const btnContainer = document.querySelector('.control-buttons');
+                    if (btnContainer) {
+                        hint = document.createElement('div');
+                        hint.id = 'dockerServiceHint';
+                        hint.style = 'color: #fbbf24; font-size: 0.85rem; margin-top: 1rem; text-align: center; padding: 0.5rem; background: rgba(251, 191, 36, 0.1); border-radius: 6px; border: 1px solid rgba(251, 191, 36, 0.2);';
+                        hint.innerHTML = '🐳 <strong>Docker 模式：</strong>请使用宿主机的 <code>docker compose</code> 命令管理服务启停';
+                        btnContainer.parentNode.insertBefore(hint, btnContainer.nextSibling);
+                        btnContainer.style.opacity = '0.5';
+                    }
+                }
+
+                const providerGrid = document.querySelector('.provider-grid');
+                if (providerGrid && !document.getElementById('dockerOAuthHint')) {
+                    const oAuthHintDiv = document.createElement('div');
+                    oAuthHintDiv.id = 'dockerOAuthHint';
+                    oAuthHintDiv.style = 'padding: 1.5rem; color: #fbbf24; background: rgba(251, 191, 36, 0.1); border-radius: 8px; text-align: center; font-size: 0.9rem; line-height: 1.5; border: 1px solid rgba(251, 191, 36, 0.2);';
+                    oAuthHintDiv.innerHTML = '🐳 <strong>Docker 模式说明：</strong><br>Docker 环境下暂不支持通过网页进行交互式 OAuth 登录。<br><br>请在您的外部环境中直接运行 CLIProxyAPI 完成认证后，将生成的 <code>.json</code> 文件放入挂载的 <code>auths</code> 目录中，Dashboard 便会自动读取。';
+                    providerGrid.parentNode.insertBefore(oAuthHintDiv, providerGrid);
+                    providerGrid.style.display = 'none';
+                    
+                    const p = document.querySelector('.modal-body p');
+                    if (p) p.style.display = 'none';
+                }
             } else {
-                indicator.className = 'status-indicator stopped';
-                icon.textContent = '⏹️';
-                text.className = 'stopped';
-                text.textContent = '服务已停止';
-                subtext.textContent = data.configured ? '服务未运行' : '服务目录未配置';
-                btnStart.disabled = !data.configured;
-                btnStop.disabled = true;
+                if (data.running) {
+                    indicator.className = 'status-indicator running';
+                    icon.textContent = '✅';
+                    text.className = 'running';
+                    text.textContent = '服务运行中';
+                    subtext.textContent = `${data.count} 个进程正在运行`;
+                    if (btnStart) btnStart.disabled = true;
+                    if (btnStop) btnStop.disabled = false;
+                    if (btnRestart) btnRestart.disabled = false;
+                } else {
+                    indicator.className = 'status-indicator stopped';
+                    icon.textContent = '⏹️';
+                    text.className = 'stopped';
+                    text.textContent = '服务已停止';
+                    subtext.textContent = data.configured ? '服务未运行' : '服务目录未配置';
+                    if (btnStart) btnStart.disabled = !data.configured;
+                    if (btnStop) btnStop.disabled = true;
+                    if (btnRestart) btnRestart.disabled = true;
+                }
             }
 
             // Update meta info
